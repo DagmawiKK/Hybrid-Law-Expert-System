@@ -1,0 +1,10 @@
+fastapi
+uvicorn
+streamlit
+requests
+scikit-learn
+numpy
+pydantic
+langchain-google-genai
+python-dotenv
+hyperon

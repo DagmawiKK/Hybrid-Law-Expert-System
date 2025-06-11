@@ -1,0 +1,19 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.venv/
+env/
+venv/
+
+
+# Environment
+.env
+.env.*
+
+# Cache
+*.pickle
+*.pkl
+.cache/
+law_expert_system.log
