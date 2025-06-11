@@ -7,6 +7,8 @@ __pycache__/
 env/
 venv/
 
+# Data
+custom_facts.metta
 
 # Environment
 .env
@@ -16,4 +18,5 @@ venv/
 *.pickle
 *.pkl
 .cache/
+cache/
 law_expert_system.log
