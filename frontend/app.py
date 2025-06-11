@@ -18,14 +18,18 @@ def extract_facts_and_rules():
     facts = []
     rules = []
     metta_path = os.path.join(os.path.dirname(__file__), "..", "backend", "symbolic", "symbolic_ai.metta")
+    kb_path = os.path.join(os.path.dirname(__file__), "..", "backend", "symbolic", "kb.metta")
     try:
         with open(metta_path, "r") as f:
             for line in f:
                 line = line.strip()
+                if line.startswith("!(") and "add-reduct" in line:
+                    rules.append(interpret_fact_or_rule(line, False))
+        with open(kb_path, "r") as f:
+            for line in f:
+                line = line.strip()
                 if line.startswith("!(") and "add-atom" in line:
                     facts.append(interpret_fact_or_rule(line))
-                elif line.startswith("!(") and "add-reduct" in line:
-                    rules.append(interpret_fact_or_rule(line, False))
     except Exception as e:
         facts = [f"Error reading metta file: {e}"]
         rules = []
