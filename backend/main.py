@@ -32,8 +32,8 @@ async def handle_query(request: QueryRequest):
         query = request.query.strip()
         logger.info(f"Received query: {query}")
 
-        # --- Custom "add facts" command ---
-        if query.lower().startswith("add facts"):
+        # Custom "add new facts"
+        if query.lower().startswith("add new facts"):
             lines = [line.strip() for line in query.split('>')[1:] if line.strip()]
             added_facts = []
             with open(CUSTOM_FACTS_PATH, "w") as f:
@@ -44,14 +44,27 @@ async def handle_query(request: QueryRequest):
                     f.write(metta_fact + "\n")
                     added_facts.append(metta_fact)
             metta_reasoner.load_kb_if_needed()
+            logger.info("Facts replaced:\n" + "\n".join(added_facts))
+            return {"response": "Facts replaced:\n" + "\n".join(added_facts), "source": "system"}
+
+        # Custom "add facts" command
+        if query.lower().startswith("add facts"):
+            lines = [line.strip() for line in query.split('>')[1:] if line.strip()]
+            added_facts = []
+            # Only write header if file does not exist or is empty
+            file_exists = os.path.exists(CUSTOM_FACTS_PATH)
+            write_header = not file_exists or os.path.getsize(CUSTOM_FACTS_PATH) == 0
+            with open(CUSTOM_FACTS_PATH, "a") as f:
+                if write_header:
+                    f.write("!(bind! &kb (new-space))\n")
+                for fact_text in lines:
+                    fact_id = f"FACT{uuid.uuid4().hex[:8]}"
+                    metta_fact = parse_natural_fact_to_metta(fact_text, gemini_api, fact_id)
+                    f.write(metta_fact + "\n")
+                    added_facts.append(metta_fact)
+            metta_reasoner.load_kb_if_needed()
             logger.info("Facts added:\n" + "\n".join(added_facts))
             return {"response": "Facts added:\n" + "\n".join(added_facts), "source": "system"}
-
-        # --- Before deduction/induction, inject custom facts into MeTTa ---
-        if custom_facts_cache:
-            metta_reasoner.metta.run("!(bind! &kb (new-space))")
-            for fact in custom_facts_cache:
-                metta_reasoner.metta.run(fact)
 
         # Classify query
         confidence, is_symbolic = logistic_classifier.classify(query)
