@@ -17,9 +17,8 @@ logger = setup_logger()
 gemini_api = GeminiAPI(api_key=GOOGLE_API_KEY)
 logistic_classifier = LogisticClassifier(gemini_api=gemini_api)
 keyword_classifier = KeywordClassifier()
-metta_reasoner = MettaReasoner(gemini_api=gemini_api)  # Pass gemini_api here!
+metta_reasoner = MettaReasoner(gemini_api=gemini_api)
 
-custom_facts_cache = []
 
 CUSTOM_FACTS_PATH = os.path.join(os.path.dirname(metta_reasoner.kb_path), "custom_facts.metta")
 
@@ -31,6 +30,17 @@ async def handle_query(request: QueryRequest):
     try:
         query = request.query.strip()
         logger.info(f"Received query: {query}")
+
+        # Custom "clear facts" command
+        if query.lower().strip() == "clear facts":
+            if os.path.exists(CUSTOM_FACTS_PATH):
+                os.remove(CUSTOM_FACTS_PATH)
+                logger.info("custom_facts.metta deleted. Default facts will be loaded.")
+                metta_reasoner.load_kb_if_needed()
+                return {"response": "All custom facts cleared. Default knowledge base loaded.", "source": "system"}
+            else:
+                logger.info("No custom_facts.metta to delete. Default facts already in use.")
+                return {"response": "No custom facts to clear. Default knowledge base is already loaded.", "source": "system"}
 
         # Custom "add new facts"
         if query.lower().startswith("add new facts"):
