@@ -28,7 +28,7 @@
                       (-> (Evaluation fails_to_perform $party $obligation $contract)
                           (Evaluation breaches_contract $party $contract)))))
 
-;; Allows termination for material breach by Bob in Contract1
+;; Allows termination for material breach by part2 in contract
 !(add-reduct &kb (: termination_option_rule
                     (-> (Evaluation contrat_is_between $party1 $party2 $contract)
                         (-> (Evaluation breaches_contract $party2 $contract)
