@@ -25,9 +25,9 @@ class LogisticClassifier:
             classification = response.strip().lower()
             if classification not in ['symbolic', 'sub-symbolic']:
                 self.logger.warning(f"Invalid classification response: {classification}, defaulting to sub-symbolic")
-                return 0.5, False  # Low confidence, default to sub-symbolic
+                return 0.5, False
             is_symbolic = classification == 'symbolic'
-            confidence = 0.9 if classification in ['symbolic', 'sub-symbolic'] else 0.5  # High confidence for valid response
+            confidence = 0.9 if classification in ['symbolic', 'sub-symbolic'] else 0.5 
             self.logger.info(f"Classified query '{query}' as {classification}")
             return confidence, is_symbolic
         except Exception as e:
