@@ -1,133 +1,139 @@
+import os
+import pickle
+import hashlib
 import numpy as np
 from sklearn.metrics.pairwise import cosine_similarity
 import re
+from backend.utils.logger import setup_logger
+
 
 class FCCInterpreter:
     def __init__(self, gemini_api, interpret_prompt, embedding_model=None):
         self.gemini_api = gemini_api
         self.interpret_prompt = interpret_prompt
         self.embedding_model = embedding_model
+        self.logger = setup_logger()
         
         # FCC intent to MeTTa query mapping with example phrasings
         self.fcc_templates = {
             'infer_valid_contract': (
-                "!(fcc &kb (fromNumber 12) (: $prf (Inheritance Contract1 valid_contract)))",
+                "!(fcc &kb (fromNumber 12) (: $prf (Inheritance {contract} valid_contract)))",
                 [
-                    "infer contract1 is valid",
-                    "what can you infer from contract1 being valid",
-                    "show induction for contract1 validity",
-                    "is contract1 a valid contract by induction",
-                    "prove contract1 is valid using induction",
-                    "inductive proof contract1 valid",
-                    "demonstrate contract1 is valid"
+                    "infer {contract} is valid",
+                    "what can you infer from {contract} being valid",
+                    "show induction for {contract} validity",
+                    "is {contract} a valid contract by induction",
+                    "prove {contract} is valid using induction",
+                    "inductive proof {contract} valid",
+                    "demonstrate {contract} is valid"
                 ]
             ),
             'infer_invalid_contract': (
-                "!(fcc &kb (fromNumber 5) (: $prf (Inheritance Contract2 invalid_contract)))",
+                "!(fcc &kb (fromNumber 5) (: $prf (Inheritance {contract} invalid_contract)))",
                 [
-                    "infer contract2 is invalid",
-                    "what can you infer from contract2 being invalid",
-                    "show induction for contract2 invalidity",
-                    "is contract2 an invalid contract by induction",
-                    "prove contract2 is invalid using induction",
-                    "inductive proof contract2 invalid",
-                    "demonstrate contract2 is invalid"
+                    "infer {contract} is invalid",
+                    "what can you infer from {contract} being invalid",
+                    "show induction for {contract} invalidity",
+                    "is {contract} an invalid contract by induction",
+                    "prove {contract} is invalid using induction",
+                    "inductive proof {contract} invalid",
+                    "demonstrate {contract} is invalid"
                 ]
             ),
             'infer_entitled_to_restitution': (
-                "!(fcc &kb (fromNumber 4) (: $prf (Evaluation entitled_to_restitution Alice Contract2)))",
+                "!(fcc &kb (fromNumber 4) (: $prf (Evaluation entitled_to_restitution {party} {contract})))",
                 [
-                    "infer alice is entitled to restitution for contract2",
-                    "is alice entitled to restitution for contract2 by induction",
-                    "inductive proof alice restitution contract2",
-                    "show induction for alice restitution contract2",
-                    "prove alice can get restitution for contract2"
+                    "infer {party} is entitled to restitution for {contract}",
+                    "is {party} entitled to restitution for {contract} by induction",
+                    "inductive proof {party} restitution {contract}",
+                    "show induction for {party} restitution {contract}",
+                    "prove {party} can get restitution for {contract}"
                 ]
             ),
             'infer_breaches_contract': (
-                "!(fcc &kb (fromNumber 8) (: $prf (Evaluation breaches_contract Bob Contract1)))",
+                "!(fcc &kb (fromNumber 8) (: $prf (Evaluation breaches_contract {party2} {contract})))",
                 [
-                    "infer bob breached contract1",
-                    "did bob breach contract1 by induction",
-                    "inductive proof bob breach contract1",
-                    "show induction for bob breach contract1",
-                    "prove bob breached contract1 using induction"
+                    "infer {party2} breached {contract}",
+                    "did {party2} breach {contract} by induction",
+                    "inductive proof {party2} breach {contract}",
+                    "show induction for {party2} breach {contract}",
+                    "prove {party2} breached {contract} using induction"
                 ]
             ),
             'infer_owes_damages': (
-                "!(fcc &kb (fromNumber 12) (: $prf (Evaluation owes_damages Bob Contract1)))",
+                "!(fcc &kb (fromNumber 12) (: $prf (Evaluation owes_damages {party2} {contract})))",
                 [
-                    "infer bob owes damages for contract1",
-                    "does bob owe damages for contract1 by induction",
-                    "inductive proof bob owes damages contract1",
-                    "show induction for bob owes damages contract1",
-                    "prove bob owes damages for contract1"
+                    "infer {party2} owes damages for {contract}",
+                    "does {party2} owe damages for {contract} by induction",
+                    "inductive proof {party2} owes damages {contract}",
+                    "show induction for {party2} owes damages {contract}",
+                    "prove {party2} owes damages for {contract}"
                 ]
             ),
             'infer_can_terminate_contract': (
-                "!(fcc &kb (fromNumber 12) (: $prf (Evaluation can_terminate_contract Alice Contract1)))",
+                "!(fcc &kb (fromNumber 12) (: $prf (Evaluation can_terminate_contract {party} {contract})))",
                 [
-                    "infer alice can terminate contract1",
-                    "can alice terminate contract1 by induction",
-                    "inductive proof alice can terminate contract1",
-                    "show induction for alice termination contract1",
-                    "prove alice can terminate contract1"
+                    "infer {party} can terminate {contract}",
+                    "can {party} terminate {contract} by induction",
+                    "inductive proof {party} can terminate {contract}",
+                    "show induction for {party} termination {contract}",
+                    "prove {party} can terminate {contract}"
                 ]
             ),
             'infer_entitled_to_remedy': (
-                "!(fcc &kb (fromNumber 13) (: $prf (Evaluation entitled_to_remedy Alice damages Contract1)))",
+                "!(fcc &kb (fromNumber 13) (: $prf (Evaluation entitled_to_remedy {party} damages {contract})))",
                 [
-                    "infer alice is entitled to damages for contract1",
-                    "is alice entitled to damages for contract1 by induction",
-                    "inductive proof alice remedy damages contract1",
-                    "show induction for alice remedy damages contract1",
-                    "prove alice is entitled to damages for contract1",
-                    "what remedy can alice get for contract1",
-                    "demonstrate alice's remedy for contract1"
+                    "infer {party} is entitled to damages for {contract}",
+                    "is {party} entitled to damages for {contract} by induction",
+                    "inductive proof {party} remedy damages {contract}",
+                    "show induction for {party} remedy damages {contract}",
+                    "prove {party} is entitled to damages for {contract}",
+                    "what remedy can {party} get for {contract}",
+                    "demonstrate {party}'s remedy for {contract}"
                 ]
             ),
             'infer_enforceable_contract': (
-                "!(fcc &kb (fromNumber 13) (: $prf (Evaluation enforceable_contract Contract1)))",
+                "!(fcc &kb (fromNumber 13) (: $prf (Evaluation enforceable_contract {contract})))",
                 [
-                    "infer contract1 is enforceable",
-                    "is contract1 enforceable by induction",
-                    "inductive proof contract1 enforceable",
-                    "show induction for contract1 enforceability",
-                    "prove contract1 is enforceable",
-                    "demonstrate contract1 enforceability"
+                    "infer {contract} is enforceable",
+                    "is {contract} enforceable by induction",
+                    "inductive proof {contract} enforceable",
+                    "show induction for {contract} enforceability",
+                    "prove {contract} is enforceable",
+                    "demonstrate {contract} enforceability"
                 ]
             ),
             'infer_excused_from_performance': (
-                "!(fcc &kb (fromNumber 4) (: $prf (Evaluation excused_from_performance Bob Contract1)))",
+                "!(fcc &kb (fromNumber 4) (: $prf (Evaluation excused_from_performance {party2} {contract})))",
                 [
-                    "infer bob is excused from performance for contract1",
-                    "is bob excused from performance for contract1 by induction",
-                    "inductive proof bob excused from performance contract1",
-                    "show induction for bob excused from performance contract1",
-                    "prove bob is excused from performance for contract1",
-                    "demonstrate bob's performance excuse for contract1"
+                    "infer {party2} is excused from performance for {contract}",
+                    "is {party2} excused from performance for {contract} by induction",
+                    "inductive proof {party2} excused from performance {contract}",
+                    "show induction for {party2} excused from performance {contract}",
+                    "prove {party2} is excused from performance for {contract}",
+                    "demonstrate {party2}'s performance excuse for {contract}"
                 ]
             ),
             'infer_contract_fully_performed': (
-                "!(fcc &kb (fromNumber 4) (: $prf (Evaluation contract_fully_performed Contract1)))",
+                "!(fcc &kb (fromNumber 4) (: $prf (Evaluation contract_fully_performed {contract})))",
                 [
-                    "infer contract1 is fully performed",
-                    "is contract1 fully performed by induction",
-                    "inductive proof contract1 fully performed",
-                    "show induction for contract1 full performance",
-                    "prove contract1 is fully performed",
-                    "demonstrate contract1 complete performance"
+                    "infer {contract} is fully performed",
+                    "is {contract} fully performed by induction",
+                    "inductive proof {contract} fully performed",
+                    "show induction for {contract} full performance",
+                    "prove {contract} is fully performed",
+                    "demonstrate {contract} complete performance"
                 ]
             ),
             'infer_complies_with_statute': (
-                "!(fcc &kb (fromNumber 4) (: $prf (Evaluation complies_with_statute Contract1 written_form)))",
+                "!(fcc &kb (fromNumber 4) (: $prf (Evaluation complies_with_statute {contract} written_form)))",
                 [
-                    "infer contract1 complies with written_form statute",
-                    "does contract1 comply with written_form by induction",
-                    "inductive proof contract1 statutory compliance",
-                    "show induction for contract1 statutory compliance",
-                    "prove contract1 complies with written_form",
-                    "demonstrate contract1 legal compliance"
+                    "infer {contract} complies with written_form statute",
+                    "does {contract} comply with written_form by induction",
+                    "inductive proof {contract} statutory compliance",
+                    "show induction for {contract} statutory compliance",
+                    "prove {contract} complies with written_form",
+                    "demonstrate {contract} legal compliance"
                 ]
             ),
         }
@@ -138,11 +144,47 @@ class FCCInterpreter:
             self._compute_fcc_embeddings()
 
     def _compute_fcc_embeddings(self):
-        """Compute embeddings for all FCC templates."""
+        """Compute and cache embeddings for all FCC templates."""
         try:
+            # Prepare cache directory and file
+            cache_dir = os.path.join(os.path.dirname(__file__), "cache")
+            os.makedirs(cache_dir, exist_ok=True)
+            cache_file = os.path.join(cache_dir, "gemini_fcc_embeddings.pkl")
+
+            # Create hash of templates to check if cache is valid
+            templates_hash = hashlib.md5(str(self.fcc_templates).encode()).hexdigest()
+
+            # Try to load from cache
+            if os.path.exists(cache_file):
+                try:
+                    with open(cache_file, 'rb') as f:
+                        cached_data = pickle.load(f)
+                        if cached_data.get('hash') == templates_hash:
+                            self.fcc_embeddings = cached_data['embeddings']
+                            print("Loaded FCC embeddings from cache")
+                            return
+                except Exception as e:
+                    print(f"Failed to load cached FCC embeddings: {str(e)}")
+
+            # Compute embeddings using Gemini
+            print("Computing FCC intent embeddings...")
+            self.fcc_embeddings = {}
             for intent, (template, examples) in self.fcc_templates.items():
                 embeddings = self.embedding_model.embed_documents(examples)
                 self.fcc_embeddings[intent] = np.mean(np.array(embeddings), axis=0)
+
+            # Cache the results
+            try:
+                cache_data = {
+                    'hash': templates_hash,
+                    'embeddings': self.fcc_embeddings
+                }
+                with open(cache_file, 'wb') as f:
+                    pickle.dump(cache_data, f)
+                print("Cached FCC intent embeddings")
+            except Exception as e:
+                print(f"Failed to cache FCC embeddings: {str(e)}")
+
         except Exception as e:
             print(f"Error computing FCC embeddings: {str(e)}")
             self.fcc_embeddings = {}
@@ -200,11 +242,15 @@ class FCCInterpreter:
                 best_intent = intent
         
         return best_intent if best_score > 1 else None  
-    def get_fcc_query(self, intent):
-        # Return the exact FCC query for the matched intent
+    def get_fcc_query(self, intent, entities=None):
         if intent in self.fcc_templates:
             template, _ = self.fcc_templates[intent]
-            return template
+            if entities is None:
+                entities = {}
+            # Provide defaults if not found
+            defaults = {"party": "Alice", "party2": "Bob", "contract": "contract1"}
+            merged = {**defaults, **{k: v for k, v in (entities or {}).items() if v}}
+            return template.format(**merged)
         return None
 
     def interpret_fcc_response(self, query, metta_response):
@@ -232,11 +278,13 @@ class FCCInterpreter:
                 "3. The inductive steps taken\n"
                 "4. The final conclusion\n"
                 "Format the output clearly, using bullet points for facts and rules.\n\n"
+                "Don't mention contract1 or any other contract if with in the user query there is an already defined contract where mentioning contract is apporpriate.\n\n\n"
                 f"User Query: {query}\n"
                 f"FCC MeTTa Query: {metta_query}\n"
                 f"MeTTa FCC Response: {metta_response_str}\n"
                 "Output:"
             )
+            self.logger.info(f"Interpreting FCC response for query: {query} \nwith intent: {intent} and \nMeTTa response: {metta_response_str}")
             response = self.gemini_api.llm.invoke(prompt)
             return response.strip()
         except Exception as e:
@@ -252,3 +300,20 @@ class FCCInterpreter:
         
         query_lower = query.lower()
         return any(keyword in query_lower for keyword in fcc_keywords)
+
+    def extract_entities(self, query: str):
+        # Extract contract
+        contract_match = re.search(r'(contract\d+)\b', query.lower())
+        contract = contract_match.group(1) if contract_match else None
+
+        # Extract parties (support multiple)
+        parties = re.findall(r'\b(alice|bob|party1|party2|kebe|chala)\b', query.lower())
+        parties = [p.capitalize() for p in parties]
+        party = parties[0] if parties else None
+        party2 = parties[1] if len(parties) > 1 else None
+
+        return {
+            "contract": contract,
+            "party": party,
+            "party2": party2
+        }
