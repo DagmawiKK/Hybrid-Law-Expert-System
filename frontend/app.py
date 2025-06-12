@@ -14,17 +14,10 @@ st.write("Ask questions about contract law. Responses are labeled as 'Symbolic' 
 
 # Show Facts and Rules from symbolic_ai.metta
 
-def extract_facts_and_rules():
+def extract_facts():
     facts = []
-    rules = []
-    metta_path = os.path.join(os.path.dirname(__file__), "..", "backend", "symbolic", "symbolic_ai.metta")
     kb_path = os.path.join(os.path.dirname(__file__), "..", "backend", "symbolic", "kb.metta")
     try:
-        with open(metta_path, "r") as f:
-            for line in f:
-                line = line.strip()
-                if line.startswith("!(") and "add-reduct" in line:
-                    rules.append(interpret_fact_or_rule(line, False))
         with open(kb_path, "r") as f:
             for line in f:
                 line = line.strip()
@@ -32,8 +25,7 @@ def extract_facts_and_rules():
                     facts.append(interpret_fact_or_rule(line))
     except Exception as e:
         facts = [f"Error reading metta file: {e}"]
-        rules = []
-    return facts, rules
+    return facts
 
 def interpret_fact_or_rule(line: str, is_fact=True) -> str:
     import re
@@ -129,7 +121,7 @@ def interpret_fact_or_rule(line: str, is_fact=True) -> str:
 
 
 with st.expander("🔎 Show available facts and rules in Symbolic AI"):
-    facts, rules = extract_facts_and_rules()
+    facts = extract_facts()
     st.subheader("Facts")
     for i, fact in enumerate(facts, 1):
         st.code(fact, language="metta")
