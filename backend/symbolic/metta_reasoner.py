@@ -61,6 +61,7 @@ class MettaReasoner:
         1. A concise summary of the conclusion.
         2. A list of all facts used in the proof(s).
         3. A list of all rules applied in the proof(s).
+        4. A specific mention of the contract and party involved, if applicable.
         Avoid repetition of facts and rules across multiple proofs. Format the output clearly, using bullet points for facts and rules.
 
         Intent: {intent}
@@ -94,6 +95,7 @@ class MettaReasoner:
             self.intent_templates = {
                 'check_valid_contract': [
                     "Is the contract valid?",
+                    "is some contract valid?",
                     "Is the contract legitimate?",
                     "Is the contract legally binding?",
                     "Is the contract enforceable?",
@@ -163,6 +165,9 @@ class MettaReasoner:
                     "Can the party exit the agreement?",
                     "Does the party have cancellation rights?",
                     "Can the contract be terminated by the party?",
+                    "Can a party terminate the agreement?",
+                    "can somename terminate the contract?",
+                    "can some person name terminate the some contract name?",
                     "Is the party permitted to end the contract?"
                 ],
                 'check_remedy': [
@@ -298,7 +303,9 @@ class MettaReasoner:
             if contract and not re.search(r'\d', contract): 
                 contract = None
 
-            party_match = re.search(r'\b(alice|bob)\b', query.lower())
+            party_match = re.search(r'\b(alice|bob|party1|party2|Alice|Bob|kebe|chala)\b', query.lower())
+            if not party_match:
+                party_match = re.search(r'(party\d+)', query.lower())
             party = party_match.group(0).capitalize() if party_match else None
 
             # Get query embedding using Gemini
@@ -399,9 +406,7 @@ class MettaReasoner:
         try:
             prompt = self.parse_prompt.format(query=query)
             response = self.gemini_api.llm.invoke(prompt)
-            self.logger.debug(f"Gemini raw response: {response}")
             parsed = json.loads(response.strip())
-            self.logger.debug(f"Parsed JSON: {parsed}")
 
             # Refine parsed entities from LLM for consistency with MeTTa
             if parsed.get('contract') and not re.search(r'contract\d+', parsed['contract'].lower()):
@@ -503,22 +508,20 @@ class MettaReasoner:
 
     def process_fcc_query(self, query):
         """Process an inductive (fcc) query using FCCInterpreter."""
-        self.logger.info(f"Processing FCC (inductive) query: {query}")
         # Use FCCInterpreter to get the intent and FCC query
         intent = self.fcc_interpreter.embedding_fcc_match(query)
         if not intent:
             return "Sorry, I could not semantically match your inductive inference request."
-        metta_query = self.fcc_interpreter.get_fcc_query(intent)
+        entities = self.fcc_interpreter.extract_entities(query)
+        metta_query = self.fcc_interpreter.get_fcc_query(intent, entities)
         try:
-            self.logger.info(f"Executing FCC MeTTa query: {metta_query}")
             result = self.metta.run(metta_query)
-            self.logger.debug(f"Raw FCC MeTTa result: {result}")
             if not result:
                 return f"No specific information found for '{query}' in the knowledge base."
             return self.fcc_interpreter.interpret_fcc_response(query, result)
         except Exception as e:
-            self.logger.error(f"Error executing FCC MeTTa query: {str(e)}")
             return f"An error occurred while processing your legal question: {str(e)}"
+
 
     def load_kb_if_needed(self):
         self.metta = MeTTa() 
@@ -537,9 +540,6 @@ class MettaReasoner:
 
         with open(self.rules_path) as file:
             rules_str = file.read()
-
-        kb_and_rules = kb_facts_str + "\n\n" + rules_str
-        self.logger.info("Full KB and rules being loaded into MeTTa:\n" + kb_and_rules)
 
         self.metta.run(kb_facts_str)
         self.metta.run(rules_str)
